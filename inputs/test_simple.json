@@ -1,0 +1,22 @@
+{
+    "spacecraft": [
+        {
+            "satName": "TestSat1",
+            "initialState": {
+                "epoch": "2025-01-01T00:00:00",
+                "sma": 6578.1363,
+                "ecc": 1e-4,
+                "inc": 97.5,
+                "raan": 100,
+                "argp": 200,
+                "trueAnom": 50
+            },
+            "dragArea": 2,
+            "dragCoeff": 2.2,
+            "massDry": 150,
+            "massProp": 1,
+            "thrust": 0.02,
+            "Isp": 1000
+        }
+    ]
+}

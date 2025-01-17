@@ -1,6 +1,7 @@
 
 # Standard Library imports
 import argparse
+from copy import deepcopy
 import json
 import math
 # from numba import njit
@@ -67,7 +68,10 @@ class PropagationControls():
 
 class ForceModel():
     def __init__(self, force):
-        self.drag = DragModel(force['drag'])
+        if 'drag' in force:
+            self.drag = DragModel(force['drag'])
+        else:
+            self.drag = DragModel({})
 
 class DragModel():
     def __init__(self, drag):
@@ -177,6 +181,7 @@ class Spacecraft():
 
         self.fuelDepletedFlag = False
         self.fuelDepletedEpoch = self.epoch
+        self.initialEpoch = self.epoch
     
     def totalMass(self):
         return self.massDry + self.massProp
@@ -254,6 +259,7 @@ class Propagator():
         # Extract the state, removing units
         state = [x for x in self.spacecraft.classical.stateVector()]
         state.append(self.spacecraft.massProp)
+        # Propagate to the time bounds
         sol = scipy.integrate.solve_ivp(self.GaussPlanEq, tspan, state)
 
         # Update state, epoch, and mass based on solution from this propagation time step
@@ -265,9 +271,31 @@ class Propagator():
         self.spacecraft.setEpoch(endEpoch)
         self.spacecraft.setMassProp(newMass)
 
-        # TODO: determine when fuel has been depleted
+        # Determine when fuel has been depleted
         if (not self.spacecraft.fuelDepletedFlag):
             self.spacecraft.checkIfFuelDepleted()
+
+def makePropagatorAndPropagate(burnStartAfterEpochInMinutes, force, propCtrls, scDict, scNum):
+    sc = Spacecraft(scDict, scNum)
+    burnEpoch = sc.epoch + TimeDelta(burnStartAfterEpochInMinutes * 60, format='sec')       # Converts minutes offset to seconds offset
+    prop = Propagator(force, propCtrls, sc, burnEpoch)
+
+    while prop.spacecraft.classical.altitude() > prop.propCtrls.finalAltitude:
+            prop.propagate()
+
+    if prop.spacecraft.fuelDepletedFlag:
+        # If the spacecraft ran out of fuel, target the run out time close to the altitude threshold
+        timeDepletionToThresholdInSecs = (prop.spacecraft.fuelDepletedEpoch - prop.spacecraft.initialEpoch).to_value('sec').value
+        fuelRemaining = 0.0
+    else:
+        # If the spacecraft did not run out of fuel, optimize for least fuel remaining (translates to quickest de-orbit time)
+        timeDepletionToThresholdInSecs = 0.0
+        fuelRemaining = prop.spacecraft.massProp
+    
+    # Will optimize for closest time to deplete fuel prior to crossing altitude threshold, or for the minimum fuel remaining
+    toMinimize = timeDepletionToThresholdInSecs + fuelRemaining
+    
+    return toMinimize
 
 def Main(inputFile):
     # Handles error if input file not found here
@@ -275,34 +303,29 @@ def Main(inputFile):
         inpData = json.load(file)
     
     # Extracts propagation controls from input file
-    propCtrls = PropagationControls(inpData['propagation'])
+    if 'propagation' in inpData:
+        propCtrls = PropagationControls(inpData['propagation'])
+    else:
+        propCtrls = PropagationControls({})
 
     # Extracts drag force model settings
-    force = ForceModel(inpData['forceModel'])
+    if 'forceModel' in inpData:
+        force = ForceModel(inpData['forceModel'])
+    else:
+        force = ForceModel({})
 
     # Sets up each spacecraft
     spacecrafts = []
-    scNum = 0
-    for sc in inpData['spacecraft']:
-        spacecrafts.append(Spacecraft(sc, scNum))
-        scNum += 1
-    
-    # Sets up each propagator
-    # TODO: wrap the burn start time in optiimizer
-    burnStartAfterEpochInMinutes = 0.1
-    propagators = []
-    for sc in spacecrafts:
-        burnEpoch = sc.epoch + TimeDelta(burnStartAfterEpochInMinutes * 60, format='sec')       # Converts minutes offset to seconds offset
-        propagators.append(Propagator(force, propCtrls, sc, burnEpoch))
-    
-    # Propagate the propagators in serial
-    for prop in propagators:
-        while prop.spacecraft.classical.altitude() > prop.propCtrls.finalAltitude:
-            prop.propagate()
-            
-        print(f'Epoch after crossing altitude threshold: {prop.spacecraft.epoch}')
-        print(f'Current altitude: {prop.spacecraft.classical.altitude()}')
-        print(f'fuel afterwards: {prop.spacecraft.massProp}')
+    for i,scDict in enumerate(inpData['spacecraft']):
+        scNum = i
+        if 'satName' not in scDict:
+            scDict['satName'] = "sat" + str(scNum)
+        burnStartAfterEpochInMinutes = 1
+        initGuess = [burnStartAfterEpochInMinutes]
+        bounds = [(0, 50)]
+        args = (force, propCtrls, scDict, scNum)
+        scMin = scipy.optimize.minimize(makePropagatorAndPropagate, initGuess, args=args, bounds=bounds, method='Nelder-Mead')
+        print(scMin)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
