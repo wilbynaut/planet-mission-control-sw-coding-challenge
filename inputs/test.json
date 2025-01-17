@@ -1,0 +1,35 @@
+{
+    "spacecraft": [
+        {
+            "satName": "TestSat1",
+            "initialState": {
+                "epoch": "2025-01-01T00:00:00",
+                "sma": 6578.1363,
+                "eccentricity": 1e-4,
+                "inclination": 97.5,
+                "raan": 100,
+                "argp": 200,
+                "trueAnom": 50
+            },
+            "dragArea": 2,
+            "dragCoeff": 2.2,
+            "massDry": 150,
+            "massPropRemaining": 1,
+            "thrust": 0.02,
+            "Isp": 1000
+        }
+    ],
+    "forceModel": {
+        "drag": {
+            "densityRef": 3.206e-4,
+            "heightRef": 60e3,
+            "scaleHeight": 7.714e3
+        },
+        "muEarth": 3.986004e14 
+    },
+    "propagation": {
+        "dt": 1.0,
+        "finalAltitude": 100,
+        "radiusEarth": 6.3781363e3
+    }
+}
