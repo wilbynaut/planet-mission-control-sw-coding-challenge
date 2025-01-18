@@ -15,7 +15,7 @@
             "dragCoeff": 2.2,
             "massDry": 150,
             "massProp": 1,
-            "thrust": 0.12,
+            "thrust": 0.02,
             "Isp": 1000
         }
     ]

@@ -1,4 +1,4 @@
 Optimal burn start time from epoch: 0.0 minutes
-Altitude threshold cross epoch: 2025-01-01T11:08:56.000
-Fuel remaining at altitude threshold cross: 0.509039755351662
+Altitude threshold cross epoch: 2025-01-01T21:00:38.000
+Fuel remaining at altitude threshold cross: 0.8457940876656467
 Fuel was not depleted before crossing the target altitude
