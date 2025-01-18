@@ -1,11 +1,11 @@
 
 # Standard Library imports
 import argparse
-from copy import deepcopy
 import json
 import math
 # from numba import njit
 import numpy as np
+import os
 import scipy
 
 # Other imports
@@ -168,12 +168,12 @@ class Spacecraft():
     """Class with all information relative to a spacecraft and its current state"""
     def __init__(self, sc, scNum):
         if 'satName' in sc:
-            self.name = sc['satName']
+            self.satName = sc['satName']
         else:
-            self.name = "sat" + str(scNum)
+            self.satName = "sat" + str(scNum)
         self.classical = Classical(sc['initialState'])
         self.epoch = Time(sc['initialState']['epoch'], format='isot', scale='utc')
-        self.dragArea = sc['dragArea'] * 1e-6       # Conver m^2 to km^2
+        self.dragArea = sc['dragArea'] * 1e-6       # Convert m^2 to km^2
         self.dragCoeff = sc['dragCoeff']
         self.massDry = sc['massDry']
         self.massProp = sc['massProp']
@@ -182,6 +182,7 @@ class Spacecraft():
         self.fuelDepletedFlag = False
         self.fuelDepletedEpoch = self.epoch
         self.initialEpoch = self.epoch
+        self.ephems = []
     
     def totalMass(self):
         return self.massDry + self.massProp
@@ -197,13 +198,38 @@ class Spacecraft():
             self.fuelDepletedFlag = True
             self.fuelDepletedEpoch = self.epoch
     
+    def writeEphem(self, outputDir):
+        fileName = self.satName + '.ephem'
+        outFile = os.path.join(outputDir, fileName)
+        header = 'Epoch\t\t\t\t\tMass [kg]\t\t\taltitude [km]\tsma [km]\t\t eccentricity\t\t\tinclination [rad]\traan [rad]\t\t\targp [rad]\t\t\ttrueAnom[rad]\n'
+        with open(outFile, 'w') as f:
+            f.write(header)
+            for eph in self.ephems:
+                epoch, mass, altitude, elems = eph
+                ephem = f'{epoch} {mass} {altitude} {elems[0]} {elems[1]} {elems[2]} {elems[3]} {elems[4]} {elems[5]}\n'
+                f.write(ephem)
+
+    def writeOutputMetrics(self, outputDir, optimalBurnStart):
+        fileName = self.satName + '_optimal_metrics.txt'
+        outFile = os.path.join(outputDir, fileName)
+        with open(outFile, 'w') as f:
+            f.write(f'Optimal burn start time from epoch: {optimalBurnStart} minutes\n')
+            f.write(f'Altitude threshold cross epoch: {self.epoch}\n')
+            f.write(f'Fuel remaining at altitude threshold cross: {self.massProp}\n')
+            if self.fuelDepletedFlag:
+                f.write(f'Fuel depletion epoch: {self.fuelDepletedEpoch}\n')
+            else:
+                f.write('Fuel was not depleted before crossing the target altitude\n')
+
+    
 class Propagator():
     """A class to propagate a spacecraft with force model and propagation controls"""
-    def __init__(self, force, propCtrls, spacecraft, burnStart):
+    def __init__(self, force, propCtrls, spacecraft, burnStart, storeEphem):
         self.force = force
         self.propCtrls = propCtrls
         self.spacecraft = spacecraft
         self.burnStart = burnStart
+        self.storeEphem = storeEphem
 
     def dragAccel(self):
         """Calculates tangential acceleration due to drag [km/s^2]"""
@@ -271,17 +297,27 @@ class Propagator():
         self.spacecraft.setEpoch(endEpoch)
         self.spacecraft.setMassProp(newMass)
 
+        # Store ephemeris records
+        if self.storeEphem:
+            self.spacecraft.ephems.append((self.spacecraft.epoch, self.spacecraft.massProp, self.spacecraft.classical.altitude(), newState))
+
         # Determine when fuel has been depleted
         if (not self.spacecraft.fuelDepletedFlag):
             self.spacecraft.checkIfFuelDepleted()
 
-def makePropagatorAndPropagate(burnStartAfterEpochInMinutes, force, propCtrls, scDict, scNum):
+def makePropagatorAndPropagate(burnStartAfterEpochInMinutes, force, propCtrls, scDict, scNum, storeEphem):
     sc = Spacecraft(scDict, scNum)
     burnEpoch = sc.epoch + TimeDelta(burnStartAfterEpochInMinutes * 60, format='sec')       # Converts minutes offset to seconds offset
-    prop = Propagator(force, propCtrls, sc, burnEpoch)
+    prop = Propagator(force, propCtrls, sc, burnEpoch, storeEphem)
 
     while prop.spacecraft.classical.altitude() > prop.propCtrls.finalAltitude:
-            prop.propagate()
+        prop.propagate()
+        
+    return prop
+    
+def optimizeFunction(burnStartAfterEpochInMinutes, force, propCtrls, scDict, scNum):
+    storeEphem = False
+    prop = makePropagatorAndPropagate(burnStartAfterEpochInMinutes, force, propCtrls, scDict, scNum, storeEphem)
 
     if prop.spacecraft.fuelDepletedFlag:
         # If the spacecraft ran out of fuel, target the run out time close to the altitude threshold
@@ -298,6 +334,8 @@ def makePropagatorAndPropagate(burnStartAfterEpochInMinutes, force, propCtrls, s
     return toMinimize
 
 def Main(inputFile):
+    outputDir = 'results'
+    os.makedirs(outputDir, exist_ok=True)
     # Handles error if input file not found here
     with open(inputFile, 'r') as file:
         inpData = json.load(file)
@@ -314,18 +352,30 @@ def Main(inputFile):
     else:
         force = ForceModel({})
 
-    # Sets up each spacecraft
-    spacecrafts = []
+    # Sets up each spacecraft propagation
     for i,scDict in enumerate(inpData['spacecraft']):
+        # A bit annoying, must re-create the spacecraft each optimization step because of Python copying. 
+        # There are other work-arounds, but this is good enough for now.
         scNum = i
         if 'satName' not in scDict:
             scDict['satName'] = "sat" + str(scNum)
         burnStartAfterEpochInMinutes = 1
-        initGuess = [burnStartAfterEpochInMinutes]
-        bounds = [(0, 50)]
-        args = (force, propCtrls, scDict, scNum)
-        scMin = scipy.optimize.minimize(makePropagatorAndPropagate, initGuess, args=args, bounds=bounds, method='Nelder-Mead')
-        print(scMin)
+        initGuess = [burnStartAfterEpochInMinutes]  # Initial guess to initialize the optimizer
+        bounds = [(0, 50)]                          # Bounds on the burn start offset to search (0 - 50 minutes)
+        args = (force, propCtrls, scDict, scNum)    # Extra arguments needed for the cost function
+        # Optimize using a Nelder-Mead minimizer
+        scMin = scipy.optimize.minimize(optimizeFunction, initGuess, args=args, bounds=bounds, method='Nelder-Mead')
+
+        # Extract the optimal solution
+        optimalBurnStart = scMin['x'][0]
+
+        # Propagate the optimal spacecraft again to get more metrics
+        # Could be avoided using a custom optimizer, but the used method is written in C and will ultimately be faster
+        storeEphem = True
+        optimalProp = makePropagatorAndPropagate(optimalBurnStart, force, propCtrls, scDict, scNum, storeEphem)
+        
+        optimalProp.spacecraft.writeEphem(outputDir)
+        optimalProp.spacecraft.writeOutputMetrics(outputDir, optimalBurnStart)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
