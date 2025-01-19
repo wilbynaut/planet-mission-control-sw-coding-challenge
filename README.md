@@ -1,10 +1,8 @@
 # planet-mission-control-sw-coding-challenge
 Coding challenge for Software Orbits R&amp;D Engineer at Planet
 
-
-TODO: requirements.txt
-make note that removing astropy units significantly imrpoved runtime, but is potentially more prone to human errors in coding
-faster speedup: somehow make a deepcopy of spacecraft after intial creation, otherwise it has to keep making them which can be annoying and takes a bit of a speed hit potentially
+The versions of astropy, nmpy, and scipy are locate in requirements.txt. To use these version, type the command
+`pip install -r requirements.txt`
 
 # Running the program
 

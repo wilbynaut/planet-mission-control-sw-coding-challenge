@@ -7,12 +7,10 @@ that the spacecraft reaches a target altitude when the spacecraft runs
 out of fuel, or for the least fuel remaining if it does not deplete the fuel.
 """
 
-
-# Standard Library imports
+# Standard imports
 import argparse
 import json
 import math
-# from numba import njit
 import numpy as np
 import os
 import scipy
@@ -402,9 +400,9 @@ class Spacecraft():
         Thruster to execute burns
     fuelDepletedFlag : bool
         Flag indicating if the fuel has been depleted
-    fuelDepletedEpoch : DateTime
+    fuelDepletedEpoch : astropy.Time
         Epoch when the spacecraft ran out of fuel
-    initialEpoch : DateTime
+    initialEpoch : astropy.Time
         The initial epoch of the spacecraft
     ephems : array
         Array of tuples of the epoch, mass, and state at each time step
@@ -466,7 +464,7 @@ class Spacecraft():
 
         Parameters
         ----------
-        epoch : DateTime
+        epoch : astropy.Time
             New epoch of the spacecraft
         """
         self.epoch = epoch
@@ -538,7 +536,7 @@ class Propagator():
         Propagation control settings
     spacecraft : Spacecraft
         Spacecraft to propagate
-    burnStart : DateTime
+    burnStart : astropy.Time
         Epoch at which to initiate the de-orbit burn
     storeEphem : bool
         Indicates if ephemeris should be stored for the spacecraft during propagation
@@ -566,7 +564,7 @@ class Propagator():
             Propagation control settings
         spacecraft : Spacecraft
             Spacecraft to propagate
-        burnStart : DateTime
+        burnStart : astropy.Time
             Epoch at which to initiate the de-orbit burn
         storeEphem : bool
             Indicates if ephemeris should be stored for the spacecraft during propagation
@@ -796,7 +794,7 @@ def Main(inputFile):
         initGuess = [burnStartAfterEpochInMinutes]  # Initial guess to initialize the optimizer
         bounds = [(0, 50)]                          # Bounds on the burn start offset to search (0 - 50 minutes)
         args = (force, propCtrls, scDict, scNum)    # Extra arguments needed for the cost function
-        
+
         # Optimize using a Nelder-Mead minimizer
         scMin = scipy.optimize.minimize(optimizeFunction, initGuess, args=args, bounds=bounds, method='Nelder-Mead')
 
