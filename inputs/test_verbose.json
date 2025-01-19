@@ -28,7 +28,6 @@
     },
     "propagation": {
         "dt": 1.0,
-        "finalAltitude": 100,
-        "radiusEarth": 6.3781363e3
+        "finalAltitude": 100
     }
 }
