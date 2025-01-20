@@ -1,0 +1,2 @@
+Spacecraft propagated: 0
+Total propellant remaining of all spacecraft: 0.8457940876656467 [kg]

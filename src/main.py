@@ -644,12 +644,12 @@ class Propagator():
         r = self.spacecraft.classical.radius()
         h = self.spacecraft.classical.angMomentum()
 
-        dadt = (2*a**2/h) * (e*math.sin(nu)*aR + (p/r)*aTang)
-        dedt = (p/h) * (math.sin(nu)*aR + (math.cos(nu) + (e + math.cos(nu))/(1 + e*math.cos(nu))) * aTang)
+        dadt = (2*a**2/h) * ((p/r)*aTang)
+        dedt = (p/h) * ((math.cos(nu) + (e + math.cos(nu))/(1 + e*math.cos(nu))) * aTang)   # Removes non-tangential perturbations (which is always 0)
         didt = 0.0      # Only from normal acceleration, not present in force model (calculation speed enhancement)
         draandt = 0.0   # Only from normal acceleration, not present in force model (calculation speed enhancement)
-        dargpdt = (1/(h*e)) * (-p*math.cos(nu)*aR + (p+r)*math.sin(nu)*aTang) - draandt*math.cos(i)
-        dnudt = h/r**2 - dargpdt - draandt*math.cos(i)
+        dargpdt = (1/(h*e)) * ((p+r)*math.sin(nu)*aTang) - draandt*math.cos(i)  # Removes non-tangential perturbations (which is always 0)
+        dnudt = h/r**2 - dargpdt        # Removes non-tangential perturbations (which is always 0)  
 
         return [dadt, dedt, didt, draandt, dargpdt, dnudt, dmPropdt]
 
@@ -756,6 +756,26 @@ def optimizeFunction(burnStartAfterEpochInMinutes, force, propCtrls, scDict, scN
     
     return toMinimize
 
+def writeOverallOptMetrics(outputDir, totalFuelRemaining, totalSC):
+    """Writes the relevent optimization metrics for all the satellites propagated.
+
+    Parameters
+    ----------
+    outputDir : str
+        Location to store the file
+    totalFuelRemaining : float
+        Total fuel remaining of all the propagated spacecraft
+    totalSC : int
+        Total number of propagated spacecraft
+    """
+    fileName = 'overallMetrics.txt'
+    outFile = os.path.join(outputDir, fileName)
+    with open(outFile, 'w') as f:
+        scLine = f'Spacecraft propagated: {totalSC}\n'
+        propLine = f'Total propellant remaining of all spacecraft: {totalFuelRemaining} [kg]\n'
+        f.write(scLine)
+        f.write(propLine)
+
 def Main(inputFile):
     """Sets up optimization of each spacecraft in the input JSON file.
 
@@ -784,6 +804,7 @@ def Main(inputFile):
         force = ForceModel({})
 
     # Sets up each spacecraft propagation
+    totalFuelRemaining = 0.0
     for i,scDict in enumerate(inpData['spacecraft']):
         # A bit annoying, must re-create the spacecraft each optimization step because of Python copying. 
         # There are other work-arounds, but this is good enough for now.
@@ -808,6 +829,11 @@ def Main(inputFile):
         
         optimalProp.spacecraft.writeEphem(outputDir)
         optimalProp.spacecraft.writeOutputMetrics(outputDir, optimalBurnStart)
+
+        totalFuelRemaining += optimalProp.spacecraft.massProp
+    
+    totalSC = i
+    writeOverallOptMetrics(outputDir, totalFuelRemaining, totalSC)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
